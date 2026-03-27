@@ -20,6 +20,30 @@ DEFAULT_PEAK_QUANTITY = 15_000
 DEFAULT_VISIBLE_QUANTITY = 25
 
 
+def inject_iceberg_buy(
+    simulator: Any,
+    order_id: str,
+    current_time: float = 0.0,
+    *,
+    target_price: float = 100.0,
+    peak_quantity: int = DEFAULT_PEAK_QUANTITY,
+    visible_quantity: int = DEFAULT_VISIBLE_QUANTITY,
+) -> None:
+    """Submit one buy NaiveIcebergOrder with a custom order_id."""
+    price = simulator.order_book.round_price(target_price)
+    iceberg = NaiveIcebergOrder(
+        order_id=order_id,
+        timestamp=current_time,
+        trader_id="iceberg_agent",
+        side=OrderSide.BUY,
+        price=price,
+        peak_quantity=peak_quantity,
+        visible_quantity=visible_quantity,
+        quantity=visible_quantity,
+    )
+    simulator.submit_order(iceberg, delay=0.0)
+
+
 def inject_iceberg_orders(
     simulator: Any,
     current_time: float = 0.0,
@@ -42,19 +66,14 @@ def inject_iceberg_orders(
         peak_quantity: Total (hidden) size.
         visible_quantity: Visible tip size in the book.
     """
-    price = simulator.order_book.round_price(target_price)
-
-    buy_iceberg = NaiveIcebergOrder(
-        order_id=ICEBERG_BUY_ORDER_ID,
-        timestamp=current_time,
-        trader_id="iceberg_agent",
-        side=OrderSide.BUY,
-        price=price,
+    inject_iceberg_buy(
+        simulator,
+        ICEBERG_BUY_ORDER_ID,
+        current_time,
+        target_price=target_price,
         peak_quantity=peak_quantity,
         visible_quantity=visible_quantity,
-        quantity=visible_quantity,
     )
-    simulator.submit_order(buy_iceberg, delay=0.0)
 
     # Sell iceberg at same price would cancel out with buy; disabled for now.
     # sell_iceberg = NaiveIcebergOrder(
