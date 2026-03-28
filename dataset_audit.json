@@ -1,0 +1,712 @@
+{
+  "test": {
+    "class_counts": {
+      "iceberg": 9705,
+      "noniceberg": 9655
+    },
+    "difficulty_counts": {
+      "easy_negative": 457,
+      "easy_positive": 434,
+      "hard_negative": 9198,
+      "hard_positive": 7367,
+      "medium_positive": 1904
+    },
+    "difficulty_by_class": {
+      "iceberg": {
+        "easy_positive": 434,
+        "hard_positive": 7367,
+        "medium_positive": 1904
+      },
+      "noniceberg": {
+        "easy_negative": 457,
+        "hard_negative": 9198
+      }
+    },
+    "volatility_by_class": {
+      "iceberg": {
+        "calm": 2580,
+        "noisy": 4332,
+        "normal": 2793
+      },
+      "noniceberg": {
+        "calm": 2635,
+        "noisy": 4313,
+        "normal": 2707
+      }
+    },
+    "imbalance_regime_by_class": {
+      "iceberg": {
+        "mild_buy": 817,
+        "mild_sell": 804,
+        "neutral": 1011,
+        "strong_buy": 3567,
+        "strong_sell": 3506
+      },
+      "noniceberg": {
+        "mild_buy": 795,
+        "mild_sell": 751,
+        "neutral": 957,
+        "strong_buy": 3531,
+        "strong_sell": 3621
+      }
+    },
+    "burstiness_regime_by_class": {
+      "iceberg": {
+        "bursty": 2159,
+        "calm": 2217,
+        "normal": 5329
+      },
+      "noniceberg": {
+        "bursty": 2194,
+        "calm": 2129,
+        "normal": 5332
+      }
+    },
+    "buy_vs_sell_iceberg": {
+      "buy": 11764,
+      "sell": 11816
+    },
+    "fake_iceberg_by_class": {
+      "iceberg": {
+        "mean": 0.69,
+        "with_any": 4769
+      },
+      "noniceberg": {
+        "mean": 2.29,
+        "with_any": 9370
+      }
+    },
+    "mm_by_class": {
+      "iceberg": {
+        "mean": 1.46
+      },
+      "noniceberg": {
+        "mean": 1.45
+      }
+    },
+    "regime_shift_by_class": {
+      "iceberg": {
+        "mean": 1.85,
+        "with_any": 8869
+      },
+      "noniceberg": {
+        "mean": 1.85,
+        "with_any": 8808
+      }
+    },
+    "timing_style_counts": {
+      "clustered": 2794,
+      "early_bias": 2500,
+      "late_bias": 1040,
+      "none": 9338,
+      "uniform_random": 3688
+    },
+    "placement_style_counts": {
+      "at_bbo": 3761,
+      "deeper": 96,
+      "inside_spread": 2277,
+      "mixed": 3360,
+      "near_bbo": 528,
+      "none": 9338
+    },
+    "liq_profile_counts": {
+      "decay_exp": 3809,
+      "decay_linear": 4797,
+      "flat": 3924,
+      "humped": 2902,
+      "inverted": 2008,
+      "random": 1920
+    },
+    "spread_stats": {
+      "iceberg": {
+        "mean": 0.0375,
+        "std": 0.0243,
+        "n": 9705
+      },
+      "noniceberg": {
+        "mean": 0.0353,
+        "std": 0.0233,
+        "n": 9655
+      }
+    },
+    "depth_stats": {
+      "iceberg": {
+        "mean": 429372.1498,
+        "std": 283159.9357,
+        "n": 9705
+      },
+      "noniceberg": {
+        "mean": 474099.3502,
+        "std": 289505.8424,
+        "n": 9655
+      }
+    },
+    "rows_stats": {
+      "iceberg": {
+        "mean": 254.0283,
+        "std": 123.9915,
+        "n": 9705
+      },
+      "noniceberg": {
+        "mean": 253.8864,
+        "std": 118.3565,
+        "n": 9655
+      }
+    },
+    "volume_stats": {
+      "iceberg": {
+        "mean": 19293.9939,
+        "std": 12933.4894,
+        "n": 9705
+      },
+      "noniceberg": {
+        "mean": 20201.41,
+        "std": 14549.0213,
+        "n": 9655
+      }
+    },
+    "support_counts": {
+      "supported": 8477,
+      "unsupported": 10883
+    },
+    "meaningfulness": {
+      "injected": 10022,
+      "meaningful": 9705,
+      "rate": 0.9684
+    },
+    "warnings": []
+  },
+  "train": {
+    "class_counts": {
+      "iceberg": 2702,
+      "noniceberg": 2763
+    },
+    "difficulty_counts": {
+      "easy_negative": 117,
+      "easy_positive": 202,
+      "hard_negative": 2646,
+      "hard_positive": 1850,
+      "medium_positive": 650
+    },
+    "difficulty_by_class": {
+      "iceberg": {
+        "easy_positive": 202,
+        "hard_positive": 1850,
+        "medium_positive": 650
+      },
+      "noniceberg": {
+        "easy_negative": 117,
+        "hard_negative": 2646
+      }
+    },
+    "volatility_by_class": {
+      "iceberg": {
+        "calm": 1341,
+        "normal": 1361
+      },
+      "noniceberg": {
+        "calm": 1383,
+        "normal": 1380
+      }
+    },
+    "imbalance_regime_by_class": {
+      "iceberg": {
+        "mild_buy": 857,
+        "mild_sell": 813,
+        "neutral": 1032
+      },
+      "noniceberg": {
+        "mild_buy": 888,
+        "mild_sell": 837,
+        "neutral": 1038
+      }
+    },
+    "burstiness_regime_by_class": {
+      "iceberg": {
+        "bursty": 616,
+        "calm": 609,
+        "normal": 1477
+      },
+      "noniceberg": {
+        "bursty": 639,
+        "calm": 631,
+        "normal": 1493
+      }
+    },
+    "buy_vs_sell_iceberg": {
+      "buy": 3238,
+      "sell": 3327
+    },
+    "fake_iceberg_by_class": {
+      "iceberg": {
+        "mean": 0.69,
+        "with_any": 1330
+      },
+      "noniceberg": {
+        "mean": 2.29,
+        "with_any": 2682
+      }
+    },
+    "mm_by_class": {
+      "iceberg": {
+        "mean": 1.46
+      },
+      "noniceberg": {
+        "mean": 1.47
+      }
+    },
+    "regime_shift_by_class": {
+      "iceberg": {
+        "mean": 1.82,
+        "with_any": 2446
+      },
+      "noniceberg": {
+        "mean": 1.82,
+        "with_any": 2504
+      }
+    },
+    "timing_style_counts": {
+      "clustered": 800,
+      "early_bias": 710,
+      "late_bias": 290,
+      "none": 2663,
+      "uniform_random": 1002
+    },
+    "placement_style_counts": {
+      "at_bbo": 1051,
+      "deeper": 28,
+      "inside_spread": 647,
+      "mixed": 929,
+      "near_bbo": 147,
+      "none": 2663
+    },
+    "liq_profile_counts": {
+      "decay_exp": 1116,
+      "decay_linear": 1357,
+      "flat": 1052,
+      "humped": 841,
+      "inverted": 563,
+      "random": 536
+    },
+    "spread_stats": {
+      "iceberg": {
+        "mean": 0.0372,
+        "std": 0.0246,
+        "n": 2702
+      },
+      "noniceberg": {
+        "mean": 0.0352,
+        "std": 0.0232,
+        "n": 2763
+      }
+    },
+    "depth_stats": {
+      "iceberg": {
+        "mean": 423930.5952,
+        "std": 275473.7425,
+        "n": 2702
+      },
+      "noniceberg": {
+        "mean": 469958.4253,
+        "std": 295810.8982,
+        "n": 2763
+      }
+    },
+    "rows_stats": {
+      "iceberg": {
+        "mean": 253.4885,
+        "std": 118.4447,
+        "n": 2702
+      },
+      "noniceberg": {
+        "mean": 257.1278,
+        "std": 120.8377,
+        "n": 2763
+      }
+    },
+    "volume_stats": {
+      "iceberg": {
+        "mean": 19351.8087,
+        "std": 12157.7801,
+        "n": 2702
+      },
+      "noniceberg": {
+        "mean": 20206.3084,
+        "std": 14619.9118,
+        "n": 2763
+      }
+    },
+    "support_counts": {
+      "supported": 2369,
+      "unsupported": 3096
+    },
+    "meaningfulness": {
+      "injected": 2802,
+      "meaningful": 2702,
+      "rate": 0.9643
+    },
+    "warnings": []
+  },
+  "val": {
+    "class_counts": {
+      "iceberg": 593,
+      "noniceberg": 582
+    },
+    "difficulty_counts": {
+      "easy_negative": 45,
+      "easy_positive": 48,
+      "hard_negative": 537,
+      "hard_positive": 416,
+      "medium_positive": 129
+    },
+    "difficulty_by_class": {
+      "iceberg": {
+        "easy_positive": 48,
+        "hard_positive": 416,
+        "medium_positive": 129
+      },
+      "noniceberg": {
+        "easy_negative": 45,
+        "hard_negative": 537
+      }
+    },
+    "volatility_by_class": {
+      "iceberg": {
+        "calm": 306,
+        "normal": 287
+      },
+      "noniceberg": {
+        "calm": 302,
+        "normal": 280
+      }
+    },
+    "imbalance_regime_by_class": {
+      "iceberg": {
+        "mild_buy": 194,
+        "mild_sell": 167,
+        "neutral": 232
+      },
+      "noniceberg": {
+        "mild_buy": 168,
+        "mild_sell": 180,
+        "neutral": 234
+      }
+    },
+    "burstiness_regime_by_class": {
+      "iceberg": {
+        "bursty": 129,
+        "calm": 130,
+        "normal": 334
+      },
+      "noniceberg": {
+        "bursty": 149,
+        "calm": 129,
+        "normal": 304
+      }
+    },
+    "buy_vs_sell_iceberg": {
+      "buy": 742,
+      "sell": 714
+    },
+    "fake_iceberg_by_class": {
+      "iceberg": {
+        "mean": 0.68,
+        "with_any": 283
+      },
+      "noniceberg": {
+        "mean": 2.33,
+        "with_any": 566
+      }
+    },
+    "mm_by_class": {
+      "iceberg": {
+        "mean": 1.44
+      },
+      "noniceberg": {
+        "mean": 1.49
+      }
+    },
+    "regime_shift_by_class": {
+      "iceberg": {
+        "mean": 1.82,
+        "with_any": 546
+      },
+      "noniceberg": {
+        "mean": 1.87,
+        "with_any": 528
+      }
+    },
+    "timing_style_counts": {
+      "clustered": 167,
+      "early_bias": 158,
+      "late_bias": 80,
+      "none": 555,
+      "uniform_random": 215
+    },
+    "placement_style_counts": {
+      "at_bbo": 232,
+      "deeper": 6,
+      "inside_spread": 130,
+      "mixed": 215,
+      "near_bbo": 37,
+      "none": 555
+    },
+    "liq_profile_counts": {
+      "decay_exp": 228,
+      "decay_linear": 302,
+      "flat": 229,
+      "humped": 198,
+      "inverted": 104,
+      "random": 114
+    },
+    "spread_stats": {
+      "iceberg": {
+        "mean": 0.0379,
+        "std": 0.0241,
+        "n": 593
+      },
+      "noniceberg": {
+        "mean": 0.0347,
+        "std": 0.0226,
+        "n": 582
+      }
+    },
+    "depth_stats": {
+      "iceberg": {
+        "mean": 411779.6782,
+        "std": 263768.8622,
+        "n": 593
+      },
+      "noniceberg": {
+        "mean": 499407.7378,
+        "std": 297811.513,
+        "n": 582
+      }
+    },
+    "rows_stats": {
+      "iceberg": {
+        "mean": 255.1214,
+        "std": 113.4879,
+        "n": 593
+      },
+      "noniceberg": {
+        "mean": 251.9055,
+        "std": 106.385,
+        "n": 582
+      }
+    },
+    "volume_stats": {
+      "iceberg": {
+        "mean": 18496.1568,
+        "std": 11585.3774,
+        "n": 593
+      },
+      "noniceberg": {
+        "mean": 21149.7388,
+        "std": 16006.2151,
+        "n": 582
+      }
+    },
+    "support_counts": {
+      "supported": 521,
+      "unsupported": 654
+    },
+    "meaningfulness": {
+      "injected": 620,
+      "meaningful": 593,
+      "rate": 0.9565
+    },
+    "warnings": []
+  },
+  "global": {
+    "class_counts": {
+      "iceberg": 13000,
+      "noniceberg": 13000
+    },
+    "difficulty_counts": {
+      "easy_negative": 619,
+      "easy_positive": 684,
+      "hard_negative": 12381,
+      "hard_positive": 9633,
+      "medium_positive": 2683
+    },
+    "difficulty_by_class": {
+      "iceberg": {
+        "easy_positive": 684,
+        "hard_positive": 9633,
+        "medium_positive": 2683
+      },
+      "noniceberg": {
+        "easy_negative": 619,
+        "hard_negative": 12381
+      }
+    },
+    "volatility_by_class": {
+      "iceberg": {
+        "calm": 4227,
+        "noisy": 4332,
+        "normal": 4441
+      },
+      "noniceberg": {
+        "calm": 4320,
+        "noisy": 4313,
+        "normal": 4367
+      }
+    },
+    "imbalance_regime_by_class": {
+      "iceberg": {
+        "mild_buy": 1868,
+        "mild_sell": 1784,
+        "neutral": 2275,
+        "strong_buy": 3567,
+        "strong_sell": 3506
+      },
+      "noniceberg": {
+        "mild_buy": 1851,
+        "mild_sell": 1768,
+        "neutral": 2229,
+        "strong_buy": 3531,
+        "strong_sell": 3621
+      }
+    },
+    "burstiness_regime_by_class": {
+      "iceberg": {
+        "bursty": 2904,
+        "calm": 2956,
+        "normal": 7140
+      },
+      "noniceberg": {
+        "bursty": 2982,
+        "calm": 2889,
+        "normal": 7129
+      }
+    },
+    "buy_vs_sell_iceberg": {
+      "buy": 15744,
+      "sell": 15857
+    },
+    "fake_iceberg_by_class": {
+      "iceberg": {
+        "mean": 0.69,
+        "with_any": 6382
+      },
+      "noniceberg": {
+        "mean": 2.29,
+        "with_any": 12618
+      }
+    },
+    "mm_by_class": {
+      "iceberg": {
+        "mean": 1.46
+      },
+      "noniceberg": {
+        "mean": 1.46
+      }
+    },
+    "regime_shift_by_class": {
+      "iceberg": {
+        "mean": 1.84,
+        "with_any": 11861
+      },
+      "noniceberg": {
+        "mean": 1.85,
+        "with_any": 11840
+      }
+    },
+    "timing_style_counts": {
+      "clustered": 3761,
+      "early_bias": 3368,
+      "late_bias": 1410,
+      "none": 12556,
+      "uniform_random": 4905
+    },
+    "placement_style_counts": {
+      "at_bbo": 5044,
+      "deeper": 130,
+      "inside_spread": 3054,
+      "mixed": 4504,
+      "near_bbo": 712,
+      "none": 12556
+    },
+    "liq_profile_counts": {
+      "decay_exp": 5153,
+      "decay_linear": 6456,
+      "flat": 5205,
+      "humped": 3941,
+      "inverted": 2675,
+      "random": 2570
+    },
+    "spread_stats": {
+      "iceberg": {
+        "mean": 0.0374,
+        "std": 0.0244,
+        "n": 13000
+      },
+      "noniceberg": {
+        "mean": 0.0353,
+        "std": 0.0233,
+        "n": 13000
+      }
+    },
+    "depth_stats": {
+      "iceberg": {
+        "mean": 427438.6563,
+        "std": 280748.7569,
+        "n": 13000
+      },
+      "noniceberg": {
+        "mean": 474352.2814,
+        "std": 291287.8977,
+        "n": 13000
+      }
+    },
+    "rows_stats": {
+      "iceberg": {
+        "mean": 253.966,
+        "std": 122.3957,
+        "n": 13000
+      },
+      "noniceberg": {
+        "mean": 254.4866,
+        "std": 118.3892,
+        "n": 13000
+      }
+    },
+    "volume_stats": {
+      "iceberg": {
+        "mean": 19269.6168,
+        "std": 12718.14,
+        "n": 13000
+      },
+      "noniceberg": {
+        "mean": 20244.9071,
+        "std": 14633.7018,
+        "n": 13000
+      }
+    },
+    "support_counts": {
+      "supported": 11367,
+      "unsupported": 14633
+    },
+    "meaningfulness": {
+      "injected": 13444,
+      "meaningful": 13000,
+      "rate": 0.967
+    },
+    "warnings": []
+  },
+  "phase_stats": {
+    "iceberg_phase": {
+      "target": 13000,
+      "saved": 13000,
+      "attempts": 56805,
+      "save_rate": 0.2289
+    },
+    "noniceberg_phase": {
+      "target": 13000,
+      "saved": 13000,
+      "attempts": 13170,
+      "save_rate": 0.9871
+    }
+  }
+}

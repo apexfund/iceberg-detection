@@ -1,0 +1,58 @@
+{
+  "num_episodes": 26000,
+  "seed": 42,
+  "output_dir": "/Users/hsla/Desktop/Dataset",
+  "counts_by_label": {
+    "iceberg": 13000,
+    "noniceberg": 13000
+  },
+  "iceberg_fraction": 0.5,
+  "balanced_final_labels": true,
+  "phase_stats": {
+    "iceberg_phase": {
+      "target": 13000,
+      "saved": 13000,
+      "attempts": 56805,
+      "save_rate": 0.2289
+    },
+    "noniceberg_phase": {
+      "target": 13000,
+      "saved": 13000,
+      "attempts": 13170,
+      "save_rate": 0.9871
+    }
+  },
+  "use_splits": true,
+  "generation_controls": {
+    "positive_support_prob": 0.8,
+    "positive_support_strength": 0.5,
+    "target_hard_negative_freq": 0.55,
+    "target_fake_iceberg_freq": 0.65,
+    "target_multi_iceberg_freq": 0.3,
+    "target_regime_shift_freq": 0.55
+  },
+  "held_out_regimes": {
+    "volatility": [
+      "noisy"
+    ],
+    "imbalance": [
+      "strong_buy",
+      "strong_sell"
+    ],
+    "burstiness": null
+  },
+  "split_counts": {
+    "train": {
+      "iceberg": 2702,
+      "noniceberg": 2763
+    },
+    "test": {
+      "iceberg": 9705,
+      "noniceberg": 9655
+    },
+    "val": {
+      "iceberg": 593,
+      "noniceberg": 582
+    }
+  }
+}
