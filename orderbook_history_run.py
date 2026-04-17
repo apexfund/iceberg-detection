@@ -2,6 +2,9 @@
 Parameterized order book simulation: runs the market like new_run.py but exposes
 CLI controls and exports order book snapshot history to JSON.
 
+Synthetic mid price follows a smooth random path (multi-frequency sines + momentum)
+so agent limits cluster around a moving center; clusters quote near current price.
+
 Example:
   python orderbook_history_run.py --duration 60 --icebergs 2 --cluster 0.4 \\
     --lp-per-level 80000 --imbalance 0.2 --min-spread 0.35 --output histories/out.json
@@ -11,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -59,6 +63,85 @@ def build_ladder(mid: float, min_spread: float, tick_size: float) -> tuple[list[
     return sorted(set(bid_prices), reverse=True), sorted(set(ask_prices))
 
 
+def generate_synthetic_price_path(
+    duration: float,
+    mid: float,
+    seed: int,
+    max_dev: float,
+    n_samples: int,
+) -> tuple[list[float], list[float]]:
+    """
+    Stock-like path: sum of sines (multiple inflections) + AR(1) momentum + micro-noise.
+    Clipped to [mid - max_dev, mid + max_dev].
+    """
+    rng = random.Random(seed)
+    if n_samples < 2:
+        n_samples = 2
+    times = [i * duration / (n_samples - 1) for i in range(n_samples)]
+
+    # Incommensurate periods => many local extrema / inflection-like behavior
+    w1 = 2 * math.pi * rng.uniform(0.8, 1.4) / max(duration, 1e-6)
+    w2 = 2 * math.pi * rng.uniform(1.8, 3.2) / max(duration, 1e-6)
+    w3 = 2 * math.pi * rng.uniform(4.0, 7.0) / max(duration, 1e-6)
+    p1, p2, p3 = rng.uniform(0, 2 * math.pi), rng.uniform(0, 2 * math.pi), rng.uniform(0, 2 * math.pi)
+    a1 = rng.uniform(0.25, 0.45) * max_dev
+    a2 = rng.uniform(0.20, 0.40) * max_dev
+    a3 = rng.uniform(0.10, 0.25) * max_dev
+
+    # Momentum component (AR(1) on increments)
+    mom = 0.0
+    phi = rng.uniform(0.82, 0.94)
+    sigma_m = max_dev * rng.uniform(0.008, 0.022)
+
+    prices: list[float] = []
+    for t in times:
+        base = (
+            a1 * math.sin(w1 * t + p1)
+            + a2 * math.sin(w2 * t + p2)
+            + a3 * math.sin(w3 * t + p3)
+        )
+        mom = phi * mom + rng.gauss(0.0, sigma_m)
+        y = mid + base + mom
+        y += rng.gauss(0.0, max_dev * 0.004)
+        lo, hi = mid - max_dev, mid + max_dev
+        y = min(hi, max(lo, y))
+        prices.append(y)
+
+    return times, prices
+
+
+def interpolate_price(times: list[float], prices: list[float], t: float) -> float:
+    """Linear interpolation; clamps past ends."""
+    if t <= times[0]:
+        return prices[0]
+    if t >= times[-1]:
+        return prices[-1]
+    for i in range(len(times) - 1):
+        if times[i] <= t <= times[i + 1]:
+            u = (t - times[i]) / (times[i + 1] - times[i])
+            return prices[i] + u * (prices[i + 1] - prices[i])
+    return prices[-1]
+
+
+def micro_ladder_around(
+    center: float,
+    tick_size: float,
+    max_offset: float,
+    n_ticks: int,
+) -> tuple[list[float], list[float]]:
+    """Bid/ask price lists within max_offset of center (for clustering)."""
+    bids = []
+    asks = []
+    for k in range(1, n_ticks + 1):
+        b = center - k * tick_size
+        a = center + k * tick_size
+        if b > 0 and k * tick_size <= max_offset + 1e-9:
+            bids.append(round(b / tick_size) * tick_size)
+        if k * tick_size <= max_offset + 1e-9:
+            asks.append(round(a / tick_size) * tick_size)
+    return bids, asks
+
+
 @dataclass
 class HistoryRunConfig:
     duration: float
@@ -77,6 +160,10 @@ class HistoryRunConfig:
     base_orders_per_sec: float
     quantity_min: int
     quantity_max: int
+    path_max_deviation: float
+    agent_half_spread: float
+    cluster_near: float
+    cluster_ticks: int
     output: Path
 
 
@@ -114,6 +201,18 @@ def run_history(cfg: HistoryRunConfig) -> tuple[MarketSimulator, dict]:
     bid_ladder, ask_ladder = build_ladder(cfg.mid, cfg.min_spread, cfg.tick_size)
     if not bid_ladder or not ask_ladder:
         raise ValueError("Empty ladder; check mid and min_spread")
+
+    n_path = max(int(cfg.duration * 30), 60)
+    path_times, path_prices = generate_synthetic_price_path(
+        cfg.duration,
+        cfg.mid,
+        cfg.seed + 17,
+        cfg.path_max_deviation,
+        n_path,
+    )
+
+    def center_at(t: float) -> float:
+        return interpolate_price(path_times, path_prices, t)
 
     sim_config = SimulationConfig(
         initial_mid_price=cfg.mid,
@@ -155,9 +254,14 @@ def run_history(cfg: HistoryRunConfig) -> tuple[MarketSimulator, dict]:
     def buy_agent_tick():
         if sim.current_time >= cfg.duration:
             return
+        c = center_at(sim.current_time)
+        buy_agent.target_price = max(c - cfg.agent_half_spread, cfg.tick_size)
         if random.random() < cfg.cluster:
+            bid_micro, _ = micro_ladder_around(c, cfg.tick_size, cfg.cluster_near, cfg.cluster_ticks)
+            if not bid_micro:
+                bid_micro = [sim.order_book.round_price(c - cfg.tick_size)]
             for _ in range(random.randint(1, 3)):
-                p = random.choice(bid_ladder)
+                p = random.choice(bid_micro)
                 p = sim.order_book.round_price(p)
                 q = random.randint(buy_agent.quantity_min, buy_agent.quantity_max)
                 o = LimitOrder(
@@ -175,9 +279,14 @@ def run_history(cfg: HistoryRunConfig) -> tuple[MarketSimulator, dict]:
     def sell_agent_tick():
         if sim.current_time >= cfg.duration:
             return
+        c = center_at(sim.current_time)
+        sell_agent.target_price = c + cfg.agent_half_spread
         if random.random() < cfg.cluster:
+            _, ask_micro = micro_ladder_around(c, cfg.tick_size, cfg.cluster_near, cfg.cluster_ticks)
+            if not ask_micro:
+                ask_micro = [sim.order_book.round_price(c + cfg.tick_size)]
             for _ in range(random.randint(1, 3)):
-                p = random.choice(ask_ladder)
+                p = random.choice(ask_micro)
                 p = sim.order_book.round_price(p)
                 q = random.randint(sell_agent.quantity_min, sell_agent.quantity_max)
                 o = LimitOrder(
@@ -214,12 +323,13 @@ def run_history(cfg: HistoryRunConfig) -> tuple[MarketSimulator, dict]:
 
             def make_inject(ki=k, oid=order_id):
                 def _inject():
+                    c = center_at(sim.current_time)
                     offset = 0.02 + ki * 0.02
                     inject_iceberg_buy(
                         sim,
                         oid,
                         current_time=sim.current_time,
-                        target_price=cfg.mid - offset,
+                        target_price=c - offset,
                         peak_quantity=cfg.iceberg_peak,
                         visible_quantity=cfg.iceberg_visible,
                     )
@@ -237,9 +347,12 @@ def run_history(cfg: HistoryRunConfig) -> tuple[MarketSimulator, dict]:
     meta = {f.name: getattr(cfg, f.name) for f in fields(cfg)}
     meta["output"] = str(cfg.output)
 
+    path_sample = [{"t": path_times[i], "price": path_prices[i]} for i in range(0, len(path_times), max(1, len(path_times) // 120))]
+
     payload = {
         "meta": meta,
         "ladder": {"bid_prices": bid_ladder, "ask_prices": ask_ladder},
+        "synthetic_mid_path": path_sample,
         "snapshots": json_sanitize(sim.snapshots),
         "stats": {f.name: getattr(sim.stats, f.name) for f in fields(sim.stats)},
         "final_book": json_sanitize(sim.order_book.snapshot()),
@@ -250,7 +363,7 @@ def run_history(cfg: HistoryRunConfig) -> tuple[MarketSimulator, dict]:
 def parse_args() -> HistoryRunConfig:
     p = argparse.ArgumentParser(description="Run LOB sim and export order book history JSON")
     p.add_argument("--duration", type=float, default=60.0, help="Simulation length (seconds)")
-    p.add_argument("--mid", type=float, default=100.0, help="Reference mid price")
+    p.add_argument("--mid", type=float, default=100.0, help="Reference mid price (path stays near this)")
     p.add_argument("--tick-size", type=float, default=0.01, help="Book tick size")
     p.add_argument("--snapshot-interval", type=float, default=1.0, help="Seconds between snapshots")
     p.add_argument("--seed", type=int, default=42, help="Random seed")
@@ -261,19 +374,19 @@ def parse_args() -> HistoryRunConfig:
         "--price-std",
         type=float,
         default=0.05,
-        help="Gaussian std for agent limit prices around side anchors (market variability)",
+        help="Gaussian std around moving buy/sell anchors (non-cluster flow)",
     )
     p.add_argument(
         "--cluster",
         type=float,
         default=0.0,
-        help="[0,1] fraction of agent events that place at random ladder prices (trade clustering, non-iceberg)",
+        help="[0,1] fraction of ticks that quote on micro-ladder near synthetic mid",
     )
     p.add_argument(
         "--lp-per-level",
         type=int,
         default=80_000,
-        help="Passive LP size at each ladder level (volume without quick depletion, non-iceberg)",
+        help="Passive LP size at each wide ladder level",
     )
     p.add_argument(
         "--imbalance",
@@ -285,7 +398,7 @@ def parse_args() -> HistoryRunConfig:
         "--min-spread",
         type=float,
         default=0.30,
-        help="Minimum $ span of bid/ask ladders from mid (>=0.30 for multi-level book)",
+        help="Minimum $ span of LP bid/ask ladders from mid",
     )
     p.add_argument(
         "--base-orders-per-sec",
@@ -295,6 +408,30 @@ def parse_args() -> HistoryRunConfig:
     )
     p.add_argument("--quantity-min", type=int, default=10)
     p.add_argument("--quantity-max", type=int, default=100)
+    p.add_argument(
+        "--path-max-deviation",
+        type=float,
+        default=0.25,
+        help="Max $|S(t)-mid|$ for synthetic mid path (stay close to original mid)",
+    )
+    p.add_argument(
+        "--agent-half-spread",
+        type=float,
+        default=0.02,
+        help="Buy anchor = center - half; sell anchor = center + half (non-cluster)",
+    )
+    p.add_argument(
+        "--cluster-near",
+        type=float,
+        default=0.06,
+        help="Cluster orders within this $ of current synthetic center",
+    )
+    p.add_argument(
+        "--cluster-ticks",
+        type=int,
+        default=6,
+        help="Number of tick steps each side for micro-ladder clustering",
+    )
     p.add_argument(
         "--output",
         type=Path,
@@ -323,6 +460,10 @@ def parse_args() -> HistoryRunConfig:
         base_orders_per_sec=a.base_orders_per_sec,
         quantity_min=a.quantity_min,
         quantity_max=a.quantity_max,
+        path_max_deviation=a.path_max_deviation,
+        agent_half_spread=a.agent_half_spread,
+        cluster_near=a.cluster_near,
+        cluster_ticks=a.cluster_ticks,
         output=out,
     )
 
