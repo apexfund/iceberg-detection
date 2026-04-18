@@ -30,7 +30,7 @@ sys.path.insert(0, str(_ROOT))
 from core.order import NaiveIcebergOrder, OrderSide
 from core.market_simulator import MarketSimulator, SimulationConfig
 from core.event_queue import EventType, PeriodicEvent
-from agents.agent import BuyAgent, SellAgent
+from training.agents import BuyAgent, SellAgent
 from training.config import GenerationConfig, IcebergConfig, RegimeConfig, REGIMES
 
 logger = logging.getLogger(__name__)

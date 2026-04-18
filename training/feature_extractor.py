@@ -25,6 +25,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 
 logger = logging.getLogger(__name__)
 
@@ -197,42 +198,54 @@ def _l3_window_features(
     return feat
 
 
+def _extract_l3_for_run(
+    run_id: str,
+    run_label: pd.DataFrame,
+    orders: pd.DataFrame,
+    trades: pd.DataFrame,
+) -> List[Dict]:
+    o_ts = orders["timestamp"].values if len(orders) > 0 else np.array([])
+    t_ts = trades["timestamp"].values if len(trades) > 0 else np.array([])
+    rows = []
+    for _, lrow in run_label.iterrows():
+        ws, we = lrow["window_start"], lrow["window_end"]
+        o_lo, o_hi = np.searchsorted(o_ts, [ws, we])
+        t_lo, t_hi = np.searchsorted(t_ts, [ws, we])
+        feat = _l3_window_features(orders.iloc[o_lo:o_hi], trades.iloc[t_lo:t_hi], ws, we)
+        feat["run_id"] = run_id
+        feat["regime"] = lrow["regime"]
+        feat["window_start"] = ws
+        feat["label"] = lrow["label"]
+        rows.append(feat)
+    return rows
+
+
 def extract_l3_features(
     orders_df: pd.DataFrame,
     trades_df: pd.DataFrame,
     label_index: pd.DataFrame,
+    n_jobs: int = -1,
 ) -> pd.DataFrame:
     """
     Compute L3 features for every window in label_index.
-    Processes each run's events in bulk to avoid redundant scans.
+    Parallelized across runs.
     """
-    feature_rows = []
     grouped_orders = {rid: grp.sort_values("timestamp")
                       for rid, grp in orders_df.groupby("run_id")}
     grouped_trades = {rid: grp.sort_values("timestamp")
                       for rid, grp in trades_df.groupby("run_id")}
 
-    for run_id, run_label in label_index.groupby("run_id"):
-        orders = grouped_orders.get(run_id, pd.DataFrame())
-        trades = grouped_trades.get(run_id, pd.DataFrame())
-        o_ts = orders["timestamp"].values if len(orders) > 0 else np.array([])
-        t_ts = trades["timestamp"].values if len(trades) > 0 else np.array([])
+    results = Parallel(n_jobs=n_jobs, prefer="processes")(
+        delayed(_extract_l3_for_run)(
+            run_id,
+            run_label,
+            grouped_orders.get(run_id, pd.DataFrame()),
+            grouped_trades.get(run_id, pd.DataFrame()),
+        )
+        for run_id, run_label in label_index.groupby("run_id")
+    )
 
-        for _, lrow in run_label.iterrows():
-            ws, we = lrow["window_start"], lrow["window_end"]
-            # Slice with searchsorted for speed
-            o_lo, o_hi = np.searchsorted(o_ts, [ws, we])
-            t_lo, t_hi = np.searchsorted(t_ts, [ws, we])
-            o_win = orders.iloc[o_lo:o_hi]
-            t_win = trades.iloc[t_lo:t_hi]
-            feat = _l3_window_features(o_win, t_win, ws, we)
-            feat["run_id"] = run_id
-            feat["regime"] = lrow["regime"]
-            feat["window_start"] = ws
-            feat["label"] = lrow["label"]
-            feature_rows.append(feat)
-
-    return pd.DataFrame(feature_rows)
+    return pd.DataFrame([row for rows in results for row in rows])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -323,34 +336,48 @@ def _l2_window_features(snaps: pd.DataFrame) -> Dict:
     return feat
 
 
+def _extract_l2_for_run(
+    run_id: str,
+    run_label: pd.DataFrame,
+    snaps: pd.DataFrame,
+) -> List[Dict]:
+    s_ts = snaps["timestamp"].values if len(snaps) > 0 else np.array([])
+    rows = []
+    for _, lrow in run_label.iterrows():
+        ws, we = lrow["window_start"], lrow["window_end"]
+        s_lo, s_hi = np.searchsorted(s_ts, [ws, we])
+        feat = _l2_window_features(snaps.iloc[s_lo:s_hi])
+        feat["run_id"] = run_id
+        feat["regime"] = lrow["regime"]
+        feat["window_start"] = ws
+        feat["label"] = lrow["label"]
+        rows.append(feat)
+    return rows
+
+
 def extract_l2_features(
     snaps_df: pd.DataFrame,
     label_index: pd.DataFrame,
+    n_jobs: int = -1,
 ) -> pd.DataFrame:
     """
     Compute L2 features for every window in label_index.
     Only receives snaps_df — never orders/trades — to prevent leakage.
+    Parallelized across runs.
     """
-    feature_rows = []
     grouped_snaps = {rid: grp.sort_values("timestamp")
                      for rid, grp in snaps_df.groupby("run_id")}
 
-    for run_id, run_label in label_index.groupby("run_id"):
-        snaps = grouped_snaps.get(run_id, pd.DataFrame())
-        s_ts = snaps["timestamp"].values if len(snaps) > 0 else np.array([])
+    results = Parallel(n_jobs=n_jobs, prefer="processes")(
+        delayed(_extract_l2_for_run)(
+            run_id,
+            run_label,
+            grouped_snaps.get(run_id, pd.DataFrame()),
+        )
+        for run_id, run_label in label_index.groupby("run_id")
+    )
 
-        for _, lrow in run_label.iterrows():
-            ws, we = lrow["window_start"], lrow["window_end"]
-            s_lo, s_hi = np.searchsorted(s_ts, [ws, we])
-            window_snaps = snaps.iloc[s_lo:s_hi]
-            feat = _l2_window_features(window_snaps)
-            feat["run_id"] = run_id
-            feat["regime"] = lrow["regime"]
-            feat["window_start"] = ws
-            feat["label"] = lrow["label"]
-            feature_rows.append(feat)
-
-    return pd.DataFrame(feature_rows)
+    return pd.DataFrame([row for rows in results for row in rows])
 
 
 # ─────────────────────────────────────────────────────────────────────────────

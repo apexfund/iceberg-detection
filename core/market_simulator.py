@@ -260,20 +260,23 @@ class MarketSimulator:
             order_id: ID of order to cancel
             delay: Delay before cancellation
         """
-        from order import CancelOrder
+        from core.order import CancelOrder
         
         cancel = CancelOrder(
             order_id=f"CANCEL_{order_id}",
             timestamp=self.current_time,
             trader_id="SYSTEM",
             side=None,  # Not relevant for cancels
-            cancel_order_id=order_id
+            quantity=1,  # placeholder; CancelOrder.__post_init__ sets quantity=0
+            cancel_order_id=order_id,
         )
         
         def process_cancel():
+            cancel.timestamp = self.current_time
             result = self.matching_engine.process_order(cancel, self.current_time)
             if result.accepted:
                 self.stats.cancelled_orders += 1
+                self.order_history.append(cancel)
             return result
         
         if delay <= 0:
