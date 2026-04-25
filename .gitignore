@@ -159,3 +159,4 @@ fix.sh
 libomp.dylib
 openmp-19.1
 *.parquet
+.mplconfig/
