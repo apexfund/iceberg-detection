@@ -99,15 +99,20 @@ def build_label_index(
             mask = (snap_times >= w_start) & (snap_times < w_end)
             if not mask.any():
                 continue
+            
+            # Stricter label: Iceberg must be at-best for at least 40% of snapshots in window
+            label = 1 if snap_active[mask].mean() >= 0.4 else 0
+            
             records.append({
                 "run_id": run_id,
                 "regime": regime,
                 "window_start": float(w_start),
                 "window_end": float(w_end),
-                "label": int(snap_active[mask].any()),
+                "label": label,
             })
 
     return pd.DataFrame(records)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -179,13 +184,6 @@ def _l3_window_features(
             "avg_trade_size", "std_trade_size",
             "repeat_trade_size_frac", "trade_size_cv",
         ]})
-
-    # ── Iceberg direct signal (only valid in L3 context) ─────────────────────
-    feat["iceberg_order_frac"] = float(o["is_iceberg"].mean()) if len(o) > 0 else 0.0
-    feat["iceberg_trade_frac"] = (
-        float((t["buy_is_iceberg"] | t["sell_is_iceberg"]).mean())
-        if ("buy_is_iceberg" in t.columns and len(t) > 0) else 0.0
-    )
 
     # ── Price dynamics ───────────────────────────────────────────────────────
     if len(t) > 1:
@@ -366,7 +364,95 @@ def extract_l2_features(
     Parallelized across runs.
     """
     grouped_snaps = {rid: grp.sort_values("timestamp")
-                     for rid, grp in snaps_df.groupby("run_id")}
+                      for rid, grp in snaps_df.groupby("run_id")}
+
+    results = Parallel(n_jobs=n_jobs, prefer="processes")(
+        delayed(_extract_l2_for_run)(
+            run_id,
+            run_label,
+            grouped_snaps.get(run_id, pd.DataFrame()),
+        )
+        for run_id, run_label in label_index.groupby("run_id")
+    )
+
+    return pd.DataFrame([row for rows in results for row in rows])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Hybrid feature extraction
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_hybrid_features(l3_df: pd.DataFrame, l2_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Combine L3 and L2 features, adding regime indicators.
+    """
+    # Join on metadata columns
+    meta_cols = ["run_id", "regime", "window_start", "label"]
+    
+    # Drop overlapping meta columns from L2 before joining
+    l2_cols_to_drop = [c for c in meta_cols if c in l2_df.columns]
+    
+    # Prefix L2 features to avoid name collisions (though they should be unique)
+    l2_feats_only = l2_df.drop(columns=l2_cols_to_drop)
+    
+    # Combine
+    hybrid = pd.concat([l3_df, l2_feats_only], axis=1)
+    
+    # Add one-hot regime encoded columns
+    regime_dummies = pd.get_dummies(hybrid["regime"], prefix="regime")
+    hybrid = pd.concat([hybrid, regime_dummies], axis=1)
+    
+    return hybrid
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main pipeline
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_feature_matrices(
+    data_dir: str,
+    window_s: float = 0.3,
+    step_s: float = 0.05,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Load parquet files from data_dir, build label index, extract L3, L2,
+    and Hybrid feature matrices.
+    """
+    data_dir = Path(data_dir)
+    logger.info("Loading parquet files …")
+    orders_df = pd.read_parquet(data_dir / "l3_orders.parquet")
+    trades_df = pd.read_parquet(data_dir / "l3_trades.parquet")
+    snaps_df = pd.read_parquet(data_dir / "l2_snapshots.parquet")
+    gt_df = pd.read_parquet(data_dir / "iceberg_gt.parquet")
+
+    logger.info(
+        f"Loaded: {len(orders_df):,} orders | {len(trades_df):,} trades | "
+        f"{len(snaps_df):,} snapshots | {len(gt_df):,} GT rows"
+    )
+
+    logger.info("Building label index …")
+    label_idx = build_label_index(gt_df, snaps_df, window_s, step_s)
+    logger.info(
+        f"Label index: {len(label_idx):,} windows | "
+        f"positive rate = {label_idx['label'].mean():.3f}"
+    )
+
+    logger.info("Extracting L3 features …")
+    l3_feats = extract_l3_features(orders_df, trades_df, label_idx)
+
+    logger.info("Extracting L2 features …")
+    l2_feats = extract_l2_features(snaps_df, label_idx)
+    
+    logger.info("Building Hybrid features …")
+    hybrid_feats = build_hybrid_features(l3_feats, l2_feats)
+
+    l3_feats.to_parquet(data_dir / "l3_features.parquet", index=False)
+    l2_feats.to_parquet(data_dir / "l2_features.parquet", index=False)
+    hybrid_feats.to_parquet(data_dir / "hybrid_features.parquet", index=False)
+    
+    logger.info(f"Features saved to {data_dir}")
+
+    return l3_feats, l2_feats, hybrid_feats, rid, grp in snaps_df.groupby("run_id")
 
     results = Parallel(n_jobs=n_jobs, prefer="processes")(
         delayed(_extract_l2_for_run)(

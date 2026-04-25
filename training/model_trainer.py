@@ -213,7 +213,7 @@ def run_full_experiment(
     cfg: Optional[ModelConfig] = None,
 ) -> Dict:
     """
-    Load feature matrices, train L3 and L2 models, return degradation report.
+    Load feature matrices, train L3, L2, and Hybrid models, return report.
     """
     if not _LGB_AVAILABLE:
         raise ImportError("lightgbm is required: pip install lightgbm")
@@ -230,79 +230,64 @@ def run_full_experiment(
     logger.info("Loading feature matrices …")
     l3_df = pd.read_parquet(data_dir / "l3_features.parquet")
     l2_df = pd.read_parquet(data_dir / "l2_features.parquet")
+    hybrid_df = pd.read_parquet(data_dir / "hybrid_features.parquet")
 
-    logger.info(f"L3: {len(l3_df):,} rows  |  L2: {len(l2_df):,} rows")
+    logger.info(f"L3/L2/Hybrid rows: {len(l3_df):,}")
     logger.info(f"Label positive rate: {l3_df['label'].mean():.3f}")
 
     # Split by run_id to avoid data leakage
     l3_train, l3_val, l3_test = _split_by_run(l3_df, cfg.train_frac, cfg.val_frac)
     l2_train, l2_val, l2_test = _split_by_run(l2_df, cfg.train_frac, cfg.val_frac)
-
-    logger.info(
-        f"Split: train={len(l3_train):,}  val={len(l3_val):,}  test={len(l3_test):,}"
-    )
+    hy_train, hy_val, hy_test = _split_by_run(hybrid_df, cfg.train_frac, cfg.val_frac)
 
     # Train models
     model_l3 = train_lgbm(l3_train, l3_val, cfg, feature_set_name="L3")
     model_l2 = train_lgbm(l2_train, l2_val, cfg, feature_set_name="L2")
+    model_hy = train_lgbm(hy_train, hy_val, cfg, feature_set_name="Hybrid")
 
     # Save models
     model_l3.save_model(str(out_dir / "model_l3.txt"))
     model_l2.save_model(str(out_dir / "model_l2.txt"))
-    logger.info(f"Models saved to {out_dir}")
+    model_hy.save_model(str(out_dir / "model_hybrid.txt"))
 
     # Evaluate on held-out test set
-    # Align test splits to same run_ids
-    test_run_ids = set(l3_test["run_id"].unique()) & set(l2_test["run_id"].unique())
-    l3_test = l3_test[l3_test["run_id"].isin(test_run_ids)].reset_index(drop=True)
-    l2_test = l2_test[l2_test["run_id"].isin(test_run_ids)].reset_index(drop=True)
-
     l3_results = evaluate_model(model_l3, l3_test, feature_set_name="L3")
     l2_results = evaluate_model(model_l2, l2_test, feature_set_name="L2")
+    hy_results = evaluate_model(model_hy, hy_test, feature_set_name="Hybrid")
 
     degradation = compute_degradation(l3_results, l2_results)
+    # Also compare Hybrid to L3
+    hybrid_gain = (hy_results["auc"] - l3_results["auc"]) / max(l3_results["auc"], 1e-6)
 
     # Feature importance
-    l3_importance = pd.DataFrame({
-        "feature": _feature_cols(l3_train),
-        "importance": model_l3.feature_importance(importance_type="gain"),
+    hy_importance = pd.DataFrame({
+        "feature": _feature_cols(hy_train),
+        "importance": model_hy.feature_importance(importance_type="gain"),
     }).sort_values("importance", ascending=False)
-
-    l2_importance = pd.DataFrame({
-        "feature": _feature_cols(l2_train),
-        "importance": model_l2.feature_importance(importance_type="gain"),
-    }).sort_values("importance", ascending=False)
-
-    l3_importance.to_csv(out_dir / "l3_feature_importance.csv", index=False)
-    l2_importance.to_csv(out_dir / "l2_feature_importance.csv", index=False)
+    hy_importance.to_csv(out_dir / "hybrid_feature_importance.csv", index=False)
 
     report = {
         "l3_eval": l3_results,
         "l2_eval": l2_results,
+        "hybrid_eval": hy_results,
         "degradation": degradation,
-        "top_l3_features": l3_importance.head(10)["feature"].tolist(),
-        "top_l2_features": l2_importance.head(10)["feature"].tolist(),
+        "hybrid_vs_l3_gain_pct": float(hybrid_gain * 100),
+        "top_hybrid_features": hy_importance.head(15).to_dict(orient="records"),
     }
 
     with open(out_dir / "degradation_report.json", "w") as f:
         json.dump(report, f, indent=2)
 
     logger.info("\n" + "=" * 60)
-    logger.info("DEGRADATION REPORT")
+    logger.info("EXPERIMENT REPORT")
     logger.info("=" * 60)
-    logger.info(degradation["interpretation"])
-    logger.info(f"  AUC L3 = {degradation['auc_l3']:.4f}")
-    logger.info(f"  AUC L2 = {degradation['auc_l2']:.4f}")
-    logger.info(f"  Overall degradation = {degradation['overall_degradation_pct']:.1f}%")
-    if degradation["by_regime"]:
-        logger.info("\nPer-regime degradation:")
-        for regime, rd in sorted(degradation["by_regime"].items(),
-                                  key=lambda x: -x[1]["degradation_pct"]):
-            logger.info(
-                f"  {regime:<20s} L3={rd['auc_l3']:.4f}  "
-                f"L2={rd['auc_l2']:.4f}  "
-                f"Δ={rd['degradation_pct']:+.1f}%"
-            )
+    logger.info(f"  AUC L3:     {l3_results['auc']:.4f}")
+    logger.info(f"  AUC L2:     {l2_results['auc']:.4f}")
+    logger.info(f"  AUC Hybrid: {hy_results['auc']:.4f}")
+    logger.info("-" * 60)
+    logger.info(f"  L2 Degradation: {degradation['overall_degradation_pct']:.1f}%")
+    logger.info(f"  Hybrid Gain:    {hybrid_gain*100:+.1f}%")
     logger.info("=" * 60)
 
     return report
+

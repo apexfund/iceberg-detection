@@ -12,14 +12,14 @@ class IcebergConfig:
     display_pct_min: float = 0.01    # 1% visible
     display_pct_max: float = 0.05    # 5% visible
     # True hidden size as multiple of display
-    hidden_mult_min: float = 10.0    # 10x display
-    hidden_mult_max: float = 200.0   # 200x display
+    hidden_mult_min: float = 5.0     # 5x display
+    hidden_mult_max: float = 40.0    # 40x display
     # Stochastic refresh delay range
     refresh_delay_min_ms: float = 5.0
     refresh_delay_max_ms: float = 500.0
     # Fraction of "large order" slots that are icebergs
-    prevalence_min: float = 0.05
-    prevalence_max: float = 0.20
+    prevalence_min: float = 0.02
+    prevalence_max: float = 0.08
     # Visible tip size range (shares)
     visible_qty_min: int = 10
     visible_qty_max: int = 150
@@ -54,14 +54,14 @@ REGIMES: List[RegimeConfig] = [
 @dataclass
 class GenerationConfig:
     # Number of simulation runs per regime
-    runs_per_regime: int = 20
+    runs_per_regime: int = 30
     # Simulation wall-clock duration per run (seconds of sim time)
-    sim_duration: float = 400.0
+    sim_duration: float = 500.0
     # L2 snapshot interval (seconds)
-    l2_snapshot_interval_s: float = 0.1
+    l2_snapshot_interval_s: float = 0.05
     # Feature window width and stride (seconds)
-    feature_window_s: float = 1.0
-    feature_step_s: float = 0.1
+    feature_window_s: float = 0.3
+    feature_step_s: float = 0.05
     # Output directory (relative to project root)
     output_dir: str = "training/data"
     # RNG seed base; each run uses seed_base + run_idx * 1000
@@ -73,21 +73,22 @@ class GenerationConfig:
 @dataclass
 class ModelConfig:
     # LightGBM hyperparameters
-    n_estimators: int = 3000
-    max_depth: int = 7
-    num_leaves: int = 63
-    learning_rate: float = 0.02
+    n_estimators: int = 2000
+    max_depth: int = 6
+    num_leaves: int = 31
+    learning_rate: float = 0.05
     subsample: float = 0.8
     colsample_bytree: float = 0.8
-    min_child_samples: int = 30
+    min_child_samples: int = 20
     reg_alpha: float = 0.1
     reg_lambda: float = 1.0
-    early_stopping_rounds: int = 100
+    early_stopping_rounds: int = 50
     n_jobs: int = -1
     # Train / val / test fractions (by run_id to avoid leakage)
     train_frac: float = 0.70
     val_frac: float = 0.15
     # test_frac = 1 - train - val
     output_dir: str = "training/models"
-    # Class imbalance weight for positive class
-    scale_pos_weight: float = 6.0
+    # Class imbalance weight for positive class (target 1:5 ratio)
+    scale_pos_weight: float = 1.0
+

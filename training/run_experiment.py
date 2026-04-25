@@ -46,9 +46,9 @@ def parse_args() -> argparse.Namespace:
                    help="Override GenerationConfig.sim_duration (seconds)")
     p.add_argument("--data-dir", type=str, default=None,
                    help="Override data output directory")
-    p.add_argument("--window-s", type=float, default=1.0,
+    p.add_argument("--window-s", type=float, default=0.3,
                    help="Feature window width in seconds")
-    p.add_argument("--step-s", type=float, default=0.1,
+    p.add_argument("--step-s", type=float, default=0.05,
                    help="Feature window step in seconds")
     return p.parse_args()
 
@@ -64,28 +64,22 @@ def stage_generate(cfg) -> None:
     logger.info(f"  Total trades:    {stats['total_trades']:>10,}")
     logger.info(f"  Total snapshots: {stats['total_snapshots']:>10,}")
     logger.info(f"  Iceberg chains:  {stats['total_iceberg_chains']:>10,}")
-    if stats["total_orders"] < 5_000_000:
-        logger.warning(
-            f"Only {stats['total_orders']:,} orders generated. "
-            "Increase runs_per_regime or sim_duration to reach 5M+ target."
-        )
 
 
 def stage_features(cfg) -> None:
     from training.feature_extractor import build_feature_matrices
     t0 = time.perf_counter()
-    l3_feats, l2_feats = build_feature_matrices(
+    l3_feats, l2_feats, hy_feats = build_feature_matrices(
         data_dir=cfg.output_dir,
-        window_s=getattr(cfg, "_window_s", 1.0),
-        step_s=getattr(cfg, "_step_s", 0.1),
+        window_s=getattr(cfg, "_window_s", 0.3),
+        step_s=getattr(cfg, "_step_s", 0.05),
     )
     elapsed = time.perf_counter() - t0
     logger.info(f"Feature extraction complete in {elapsed/60:.1f} min")
-    logger.info(f"  L3 feature matrix: {l3_feats.shape}")
-    logger.info(f"  L2 feature matrix: {l2_feats.shape}")
-    logger.info(f"  L3 features ({len([c for c in l3_feats.columns if c not in {'run_id','regime','window_start','label'}])}):")
-    feat_cols = [c for c in l3_feats.columns if c not in {"run_id","regime","window_start","label"}]
-    logger.info(f"    {feat_cols}")
+    logger.info(f"  L3 feature matrix:     {l3_feats.shape}")
+    logger.info(f"  L2 feature matrix:     {l2_feats.shape}")
+    logger.info(f"  Hybrid feature matrix: {hy_feats.shape}")
+
 
 
 def stage_train(cfg_model, data_dir: str) -> None:
