@@ -14,12 +14,17 @@ from training.feature_extractor import get_cnn_sequences
 
 logger = logging.getLogger(__name__)
 
-def evaluate_cnn(model, X_test, y_test, device="cpu"):
+def evaluate_cnn(model, X_test, y_test, device="cpu", batch_size=512):
+    from torch.utils.data import DataLoader, TensorDataset
     model.eval()
-    X_torch = torch.tensor(X_test, dtype=torch.float32).to(device)
+    ds = TensorDataset(torch.tensor(X_test, dtype=torch.float32))
+    loader = DataLoader(ds, batch_size=batch_size)
+    probs = []
     with torch.no_grad():
-        probs = model(X_torch).squeeze().cpu().numpy()
-    
+        for (x,) in loader:
+            probs.append(model(x.to(device)).squeeze().cpu().numpy())
+    probs = np.concatenate(probs)
+
     auc = roc_auc_score(y_test, probs)
     ap = average_precision_score(y_test, probs)
     return {"auc": float(auc), "avg_precision": float(ap), "n_samples": len(y_test)}
@@ -85,16 +90,6 @@ def run_full_experiment(
             
         keep = np.sort(np.concatenate([pos_idx, neg_idx]))
         X_train, y_train = X_train[keep], y_train[keep]
-
-        # Cap sizes for fast iteration across all hardware
-        MAX_TRAIN = 10000
-        MAX_TEST = 5000
-        if len(X_train) > MAX_TRAIN:
-            idx = np.random.choice(len(X_train), MAX_TRAIN, replace=False)
-            X_train, y_train = X_train[idx], y_train[idx]
-        if len(X_test) > MAX_TEST:
-            idx = np.random.choice(len(X_test), MAX_TEST, replace=False)
-            X_test, y_test = X_test[idx], y_test[idx]
 
 
         logger.info(f"{mode} Samples: {len(X_train)} train (balanced), {len(X_test)} test")
