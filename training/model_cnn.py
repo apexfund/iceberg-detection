@@ -5,6 +5,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import logging
+from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def train_cnn_model(
     in_channels: int, seq_len: int,
     epochs: int = 15, batch_size: int = 64, lr: float = 0.001,
     device: str = "cpu"
-):
+) -> Tuple[MicrostructureCNN, Dict[str, List[float]]]:
     train_ds = MicrostructureDataset(X_train, y_train)
     val_ds = MicrostructureDataset(X_val, y_val)
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
@@ -65,6 +66,7 @@ def train_cnn_model(
     
     best_val_auc = 0.0
     best_state = None
+    history = {"train_loss": [], "val_auc": []}
     
     for epoch in range(epochs):
         model.train()
@@ -72,7 +74,7 @@ def train_cnn_model(
         for x_batch, y_batch in train_loader:
             x_batch, y_batch = x_batch.to(device), y_batch.to(device)
             optimizer.zero_grad()
-            preds = model(x_batch).squeeze()
+            preds = model(x_batch).squeeze(-1)
             loss = criterion(preds, y_batch)
             loss.backward()
             optimizer.step()
@@ -82,19 +84,26 @@ def train_cnn_model(
         all_preds, all_labels = [], []
         with torch.no_grad():
             for x_batch, y_batch in val_loader:
-                preds = model(x_batch.to(device)).squeeze()
+                preds = model(x_batch.to(device)).squeeze(-1)
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(y_batch.numpy())
         
         from sklearn.metrics import roc_auc_score
-        try: val_auc = roc_auc_score(all_labels, all_preds)
-        except: val_auc = 0.5
+        if len(set(all_labels)) < 2:
+            val_auc = 0.5
+        else:
+            val_auc = roc_auc_score(all_labels, all_preds)
+
+        avg_loss = total_loss / max(len(train_loader), 1)
+        history["train_loss"].append(float(avg_loss))
+        history["val_auc"].append(float(val_auc))
             
-        logger.info(f"Epoch {epoch+1}/{epochs} | Loss: {total_loss/len(train_loader):.4f} | Val AUC: {val_auc:.4f}")
+        logger.info(f"Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f} | Val AUC: {val_auc:.4f}")
         
         if val_auc > best_val_auc:
             best_val_auc = val_auc
             best_state = model.state_dict()
             
-    if best_state: model.load_state_dict(best_state)
-    return model
+    if best_state:
+        model.load_state_dict(best_state)
+    return model, history

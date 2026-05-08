@@ -6,12 +6,11 @@ price levels. Each price level contains a queue of orders at that price,
 processed in time priority (FIFO).
 """
 
-from collections import defaultdict, deque
-from typing import Dict, List, Optional, Tuple, Deque
+from collections import deque
+from typing import Deque, Dict, List, Optional, Tuple
 from sortedcontainers import SortedDict
-import bisect
 
-from core.order import LimitOrder, OrderSide, NaiveIcebergOrder
+from core.order import LimitOrder, OrderSide
 
 
 class PriceLevel:
@@ -237,6 +236,16 @@ class OrderBook:
     def get_order(self, order_id: str) -> Optional[LimitOrder]:
         """Look up an order by ID"""
         return self._all_orders.get(order_id)
+
+    def get_level(self, price: float, side: OrderSide) -> Optional[PriceLevel]:
+        """Return the price level at `price` on the requested side, if present."""
+        side_dict = self._bids if side == OrderSide.BUY else self._asks
+        return side_dict.get(self.round_price(price))
+
+    def _discard_order_tracking(self, order_id: str):
+        """Remove an order from global tracking if it is no longer in the book."""
+        self._all_orders.pop(order_id, None)
+        self._order_side_map.pop(order_id, None)
     
     def match_market_order(self, side: OrderSide, quantity: int) -> List[Tuple[LimitOrder, int, float]]:
         """
@@ -277,6 +286,8 @@ class OrderBook:
             for order, matched_qty in level_matches:
                 matches.append((order, matched_qty, price))
                 remaining -= matched_qty
+                if order.is_filled:
+                    self._discard_order_tracking(order.order_id)
             
             # Mark empty levels for removal
             if level.is_empty():
@@ -300,17 +311,15 @@ class OrderBook:
             List of (price, total_quantity, num_orders) tuples
         """
         side_dict = self._bids if side == OrderSide.BUY else self._asks
-        
-        depth = []
-        
+
+        items = list(side_dict.items())
         if side == OrderSide.BUY:
-            # Bids: highest to lowest
-            price_iter = reversed(list(side_dict.items())[:levels])
+            items = list(reversed(items[-levels:]))
         else:
-            # Asks: lowest to highest
-            price_iter = list(side_dict.items())[:levels]
-        
-        for price, level in price_iter:
+            items = items[:levels]
+
+        depth = []
+        for price, level in items:
             depth.append((price, level.total_quantity, level.num_orders))
         
         return depth
@@ -330,13 +339,14 @@ class OrderBook:
         
         if num_levels is None:
             return sum(level.total_quantity for level in side_dict.values())
-        
-        total = 0
+
+        items = list(side_dict.items())
         if side == OrderSide.BUY:
-            items = reversed(list(side_dict.items())[:num_levels])
+            items = items[-num_levels:]
         else:
-            items = list(side_dict.items())[:num_levels]
-        
+            items = items[:num_levels]
+
+        total = 0
         for _, level in items:
             total += level.total_quantity
         

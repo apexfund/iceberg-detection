@@ -55,6 +55,7 @@ class GenerationConfig:
     feature_step_s: float = 0.05
     output_dir: str = "training/data"
     seed_base: int = 42
+    n_jobs: int = -1
     iceberg: IcebergConfig = field(default_factory=IcebergConfig)
     regimes: List[RegimeConfig] = field(default_factory=lambda: REGIMES)
 
@@ -65,10 +66,11 @@ class ModelConfig:
     epochs: int = 5
     batch_size: int = 512
     learning_rate: float = 0.001
-    seq_len: int = 200
+    seq_len: int = 20
     
     # Train / val / test fractions (by run_id to avoid leakage)
     train_frac: float = 0.70
     val_frac: float = 0.15
+    split_seed: int = 42
     output_dir: str = "training/models"
     n_jobs: int = -1

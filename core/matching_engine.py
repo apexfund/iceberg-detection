@@ -6,12 +6,11 @@ generates trade records, and handles special order types like icebergs.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
-from enum import Enum
+from typing import List, Optional
 
 from core.order import (
     Order, LimitOrder, MarketOrder, CancelOrder, NaiveIcebergOrder,
-    OrderSide, OrderStatus, OrderType
+    OrderSide, OrderStatus
 )
 from core.order_book import OrderBook
 
@@ -87,94 +86,6 @@ class MatchingEngine:
                 accepted=False,
                 rejection_reason=f"Unknown order type: {type(order)}"
             )
-        
-    def _match_order(self, aggressive_order: Order) -> List[Trade]:
-        """
-        Match an incoming aggressive order against the book.
-        
-        Args:
-            aggressive_order: The incoming order
-            
-        Returns:
-            List of generated trades
-        """
-        trades = []
-        
-        while aggressive_order.quantity > 0:
-            # Get best price level
-            if aggressive_order.side == OrderSide.BUY:
-                best_price = self.order_book.best_ask
-                if best_price is None:
-                    break
-                # For limit orders, check price constraint
-                if isinstance(aggressive_order, LimitOrder) or isinstance(aggressive_order, NaiveIcebergOrder):
-                    if aggressive_order.price < best_price:
-                        break
-            else:
-                best_price = self.order_book.best_bid
-                if best_price is None:
-                    break
-                # For limit orders, check price constraint
-                if isinstance(aggressive_order, LimitOrder) or isinstance(aggressive_order, NaiveIcebergOrder):
-                    if aggressive_order.price > best_price:
-                        break
-                        
-            # Get the price level object
-            level = self.order_book.get_level(best_price, 
-                                            OrderSide.SELL if aggressive_order.side == OrderSide.BUY else OrderSide.BUY)
-            
-            if not level or level.is_empty():
-                break
-                
-            # Match at this level
-            # We implement custom matching logic here to handle icebergs correctly
-            while aggressive_order.quantity > 0 and not level.is_empty():
-                resting_order = level.peek_front()
-                if not resting_order:
-                    break
-                    
-                match_qty = min(aggressive_order.quantity, resting_order.quantity)
-                
-                # Execute trade
-                trade = Trade(
-                    trade_id=f"T{self.trade_counter:08d}",
-                    timestamp=aggressive_order.timestamp,
-                    price=best_price,
-                    quantity=match_qty,
-                    buy_order_id=aggressive_order.order_id if aggressive_order.side == OrderSide.BUY else resting_order.order_id,
-                    sell_order_id=aggressive_order.order_id if aggressive_order.side == OrderSide.SELL else resting_order.order_id,
-                    aggressor_side=aggressive_order.side
-                )
-                trades.append(trade)
-                self.trade_counter += 1
-                
-                # Update quantities
-                aggressive_order.fill(match_qty)
-                resting_order.fill(match_qty)
-                level._total_quantity -= match_qty # Manually update level quantity
-                
-                # Handle filled resting order (Check for Iceberg Refill HERE)
-                if resting_order.is_filled:
-                    # If it's an iceberg, try to refill it immediately
-                    if isinstance(resting_order, NaiveIcebergOrder) and resting_order.needs_refill:
-                        if resting_order.refill():
-                            # It successfully refilled! 
-                            # We do NOT remove it from the deque. 
-                            # We allow the loop to continue and potentially match against it again.
-                            # We must add the new quantity back to the level's total
-                            level._total_quantity += resting_order.quantity
-                        else:
-                            # Refill failed (empty), remove it
-                            level.remove_order(resting_order.order_id)
-                    else:
-                        # Standard order filled, remove it
-                        level.remove_order(resting_order.order_id)
-                elif resting_order.quantity == 0:
-                     # This catches cases where quantity is 0 but is_filled might be false 
-                     # (though fill() handles status, safety check)
-                     level.remove_order(resting_order.order_id)
-
-        return trades
     
     def _process_cancel(self, cancel_order: CancelOrder, timestamp: float) -> OrderResult:
         """
@@ -382,7 +293,7 @@ class MatchingEngine:
             passive_order = level.peek_front()
             
             # Calculate match quantity
-            match_qty = min(order.remaining_quantity, passive_order.quantity)
+            match_qty = min(order.remaining_quantity, passive_order.remaining_quantity)
             
             # Execute Trade
             trade = self._create_trade(
@@ -409,16 +320,18 @@ class MatchingEngine:
                     if passive_order.refill():
                         # REFILL SUCCESS: Add back to end of queue (priority loss)
                         level.orders.append(passive_order)
-                        level._total_quantity += passive_order.quantity
+                        level._total_quantity += passive_order.remaining_quantity
                         # It stays in the order_map, so no map updates needed
                     else:
                         # REFILL FAILED: Totally done
                         if passive_order.order_id in level._order_map:
                             del level._order_map[passive_order.order_id]
+                        self.order_book._discard_order_tracking(passive_order.order_id)
                 else:
                     # STANDARD ORDER: Totally done
                     if passive_order.order_id in level._order_map:
                         del level._order_map[passive_order.order_id]
+                    self.order_book._discard_order_tracking(passive_order.order_id)
             
             # If the level became empty after this match (and no refill happened), clean it up
             if level.is_empty():
