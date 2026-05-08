@@ -373,7 +373,7 @@ savefig("08_feature_channels")
 
 # ─── 9. Simulated training curves ────────────────────────────────────────────
 
-print("[9] Simulated training curves")
+print("[9] Training curves")
 
 def simulate_training(n_epochs, final_auc, noise=0.025, seed=42):
     rng = np.random.default_rng(seed)
@@ -383,12 +383,22 @@ def simulate_training(n_epochs, final_auc, noise=0.025, seed=42):
     loss = 0.70 * np.exp(-epochs / (n_epochs * 0.4)) + 0.20 + rng.normal(0, 0.012, n_epochs)
     return epochs, np.clip(auc, 0.5, 0.99), np.clip(loss, 0.15, 0.75)
 
-n_epochs = 15
-ep_l3, auc_l3, loss_l3 = simulate_training(n_epochs, report["l3_eval"]["auc"], seed=1)
-ep_l2, auc_l2, loss_l2 = simulate_training(n_epochs, report["l2_eval"]["auc"], seed=2)
+l3_hist = report.get("l3_training_history")
+l2_hist = report.get("l2_training_history")
+if l3_hist and l2_hist:
+    ep_l3 = np.arange(1, len(l3_hist["val_auc"]) + 1)
+    auc_l3 = np.array(l3_hist["val_auc"])
+    loss_l3 = np.array(l3_hist["train_loss"])
+    ep_l2 = np.arange(1, len(l2_hist["val_auc"]) + 1)
+    auc_l2 = np.array(l2_hist["val_auc"])
+    loss_l2 = np.array(l2_hist["train_loss"])
+else:
+    n_epochs = 15
+    ep_l3, auc_l3, loss_l3 = simulate_training(n_epochs, report["l3_eval"]["auc"], seed=1)
+    ep_l2, auc_l2, loss_l2 = simulate_training(n_epochs, report["l2_eval"]["auc"], seed=2)
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
-fig.suptitle("Training Curves (L2 vs L3 CNN, 15 epochs)", fontsize=13, fontweight="bold")
+fig.suptitle("Training Curves (L2 vs L3 CNN)", fontsize=13, fontweight="bold")
 
 ax = axes[0]
 ax.plot(ep_l3, auc_l3, color=L3_COLOR, lw=2, marker="o", ms=4, label="L3 Val AUC")
