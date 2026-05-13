@@ -27,7 +27,7 @@ Since real exchange-level data is expensive and hard to label, we build a **synt
 
 1. Run a realistic order book with buy and sell agents across five market regimes (trending up, trending down, mean-reverting, volatile, low-volatility)
 2. Randomly inject iceberg orders at the best bid/ask with controlled hidden sizes (5–40× the visible tip)
-3. Label each 1-second window of market activity: was an iceberg active here?
+3. Label each 300ms window of market activity: was an iceberg active here?
 4. Train a 1D-CNN to classify windows as iceberg / no iceberg
 5. Compare a model that only sees price and quantity (L2) against one that also sees the raw order and trade stream (L3)
 
@@ -35,7 +35,7 @@ Since real exchange-level data is expensive and hard to label, we build a **synt
 
 ## The Model
 
-Each input is a **1-second snapshot of the order book** — 20 timesteps at 50ms intervals, encoded as a multi-channel time series.
+Each input is a **300ms snapshot of the order book** — 20 timesteps at 50ms intervals, encoded as a multi-channel time series.
 
 **L2 features** (4 channels): best bid, best ask (normalized to mid-price), bid quantity at L1, ask quantity at L1 (log-scaled).
 
@@ -58,23 +58,23 @@ Trained on 215,000 balanced windows (50/50 iceberg vs. no iceberg) with BCE loss
 
 | Model | AUC-ROC | Avg Precision | Test windows |
 |-------|---------|---------------|--------------|
-| L3 CNN (price + order flow) | **0.8900** | 0.879 | 179,190 |
-| L2 CNN (price + qty only) | **0.8298** | 0.850 | 179,190 |
+| L3 CNN (price + order flow) | **0.890** | 0.956 | 179,190 |
+| L2 CNN (price + qty only) | **0.8285** | 0.937 | 179,190 |
 
 <img src="training/plots/01_model_performance.png" width="600"/>
 
-The L3 model is meaningfully better. The 6-point AUC gap is statistically significant (z = 8.11, p = 4.4 × 10⁻¹⁶) — raw order flow carries real information that price and quantity alone don't capture.
+The L3 model is meaningfully better. The ~6.6% AUC degradation when stripping order flow to just price and quantity shows that the raw trade and event stream carries real signal — not just noise. The gap isn't huge, which makes sense: a lot of iceberg behaviour is already visible in how the displayed quantity evolves. But it's consistent and real.
 
-The models are not perfect, and they shouldn't be. A 300ms window of noisy synthetic data is genuinely ambiguous much of the time. What matters is that the signal is real and learnable.
+The models are not perfect, and they shouldn't be. A 300ms window of noisy synthetic data is genuinely ambiguous much of the time. What matters is that the signal is learnable.
 
 ---
 
 ## Dataset
 
 - **5 regimes** × 20 runs × 300 seconds = 100 simulated trading sessions
-- **562 iceberg chains** injected across all sessions
-- **299,650 labelled windows** (0.3s window, 0.05s step)
-- Iceberg hidden size: 73–7,839 shares; visible tip: 10–199 shares; multiplier: 5–40×
+- **1,242 iceberg chains** injected across all sessions
+- **~600K labelled windows** (0.3s window, 0.05s step); 215,342 used for training after balancing
+- Iceberg hidden size: 56–7,839 shares; visible tip: 10–199 shares; hidden multiplier: 5–40×
 
 <img src="training/plots/10_iceberg_signal_example.png" width="750"/>
 
@@ -112,12 +112,12 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # Full pipeline: simulate → label → train (≈2 minutes on Apple Silicon)
-python training/run_experiment.py
+python -m training.run_experiment --stage all
 
 # Individual stages
-python training/run_experiment.py --stage generate
-python training/run_experiment.py --stage features
-python training/run_experiment.py --stage train
+python -m training.run_experiment --stage generate
+python -m training.run_experiment --stage features
+python -m training.run_experiment --stage train
 
 # Regenerate plots
 python visualize.py
