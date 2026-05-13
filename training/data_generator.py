@@ -1,12 +1,8 @@
-"""
-Multi-regime synthetic order book data generator.
-"""
+"""Multi-regime synthetic order book data generator."""
 
-import os
 import sys
-import time
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -22,7 +18,7 @@ from core.order import NaiveIcebergOrder, OrderSide
 from core.market_simulator import MarketSimulator, SimulationConfig
 from core.event_queue import EventType, PeriodicEvent
 from training.agents import BuyAgent, SellAgent
-from training.config import GenerationConfig, IcebergConfig, RegimeConfig, REGIMES
+from training.config import GenerationConfig, IcebergConfig, RegimeConfig
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +60,11 @@ class IcebergOrchestrator:
         self.rng = rng
         self.cfg = cfg
         self._chains: Dict[str, IcebergChain] = {}
+        self._completed_chains: List[IcebergChain] = []
         self._tip_to_chain: Dict[str, str] = {}
+        self._tip_orders: Dict[str, NaiveIcebergOrder] = {}
         self._counter = 0
-        sim.on_order(self._on_order)
+        sim.on_trade(self._on_trade)
 
     def _new_id(self, prefix: str) -> str:
         self._counter += 1
@@ -80,10 +78,10 @@ class IcebergOrchestrator:
             start_time=self.sim.current_time, remaining_hidden=total_hidden - visible_qty,
         )
         self._chains[chain_id] = chain
-        self._submit_tip(chain, visible_qty)
+        self._submit_tip(chain, visible_qty, is_refill=False)
         return chain_id
 
-    def _submit_tip(self, chain: IcebergChain, tip_qty: int):
+    def _submit_tip(self, chain: IcebergChain, tip_qty: int, is_refill: bool):
         oid = self._new_id("ICE")
         rounded_price = self.sim.order_book.round_price(chain.price)
         order_side = OrderSide.BUY if chain.side == "BUY" else OrderSide.SELL
@@ -94,44 +92,63 @@ class IcebergOrchestrator:
             max_visible_quantity=tip_qty, randomize_refill=False,
         )
         chain.current_tip_id = oid
+        if is_refill:
+            chain.n_refills += 1
         self._tip_to_chain[oid] = chain.chain_id
+        self._tip_orders[oid] = order
         self.sim.submit_order(order)
 
-    def _on_order(self, order, result):
-        oid = order.order_id
-        if oid not in self._tip_to_chain: return
-        chain_id = self._tip_to_chain[oid]
-        chain = self._chains.get(chain_id)
-        if chain is None: return
+    def _on_trade(self, trade):
+        for oid in (trade.buy_order_id, trade.sell_order_id):
+            if oid not in self._tip_to_chain:
+                continue
+            order = self._tip_orders.get(oid)
+            if order is not None and order.is_filled:
+                self._handle_filled_tip(oid)
 
-        if result.is_filled:
-            chain.n_refills += 1
-            del self._tip_to_chain[oid]
-            if chain.remaining_hidden > 0:
-                next_qty = min(chain.visible_qty, chain.remaining_hidden)
-                chain.remaining_hidden -= next_qty
-                delay = chain.refresh_delay_s
-                if delay > 1e-4:
-                    delay = max(1e-4, delay + self.rng.uniform(-0.1, 0.1) * delay)
-                
-                def _do_refill(c=chain, q=next_qty):
-                    if c.chain_id in self._chains: self._submit_tip(c, q)
-                self.sim.event_queue.schedule(self.sim.current_time + delay, EventType.AGENT_ACTION, _do_refill)
-            else:
-                chain.end_time = self.sim.current_time
-                del self._chains[chain_id]
+    def _handle_filled_tip(self, oid: str):
+        chain_id = self._tip_to_chain.get(oid)
+        if chain_id is None:
+            return
+
+        chain = self._chains.get(chain_id)
+        if chain is None:
+            return
+
+        self._tip_to_chain.pop(oid, None)
+        self._tip_orders.pop(oid, None)
+        if chain.remaining_hidden > 0:
+            next_qty = min(chain.visible_qty, chain.remaining_hidden)
+            chain.remaining_hidden -= next_qty
+            delay = chain.refresh_delay_s
+            if delay > 1e-4:
+                delay = max(1e-4, delay + self.rng.uniform(-0.1, 0.1) * delay)
+
+            def _do_refill(c=chain, q=next_qty):
+                if c.chain_id in self._chains:
+                    self._submit_tip(c, q, is_refill=True)
+
+            self.sim.event_queue.schedule(self.sim.current_time + delay, EventType.AGENT_ACTION, _do_refill)
+        else:
+            chain.end_time = self.sim.current_time
+            self._completed_chains.append(chain)
+            del self._chains[chain_id]
 
     def ground_truth_df(self, run_id: str, regime: str) -> pd.DataFrame:
         rows = []
-        # Include both active and finished chains for full coverage
-        for chain in list(self._chains.values()):
+        for chain in [*self._completed_chains, *self._chains.values()]:
             rows.append({
                 "run_id": run_id, "regime": regime, "chain_id": chain.chain_id,
                 "side": chain.side, "price": chain.price, "total_hidden": chain.total_hidden,
                 "visible_qty": chain.visible_qty, "refresh_delay_s": chain.refresh_delay_s,
                 "start_time": chain.start_time, "end_time": chain.end_time, "n_refills": chain.n_refills,
             })
-        return pd.DataFrame(rows)
+        if not rows:
+            return pd.DataFrame(columns=[
+                "run_id", "regime", "chain_id", "side", "price", "total_hidden",
+                "visible_qty", "refresh_delay_s", "start_time", "end_time", "n_refills",
+            ])
+        return pd.DataFrame(rows).sort_values(["start_time", "chain_id"]).reset_index(drop=True)
 
 @dataclass
 class SimRunResult:
@@ -206,6 +223,10 @@ class RegimeSimRunner:
         orch.inject(side, price, total_hidden, visible_qty, delay_s)
 
     def _package(self, sim, orch) -> SimRunResult:
+        def top_level_quantity(snapshot: Dict, depth_key: str) -> int:
+            depth = snapshot.get(depth_key) or []
+            return int(depth[0][1]) if depth else 0
+
         orders = pd.DataFrame([{
             "run_id": self.run_id, "regime": self.regime.name, "timestamp": o.timestamp,
             "order_id": o.order_id, "side": str(o.side.value if hasattr(o.side, "value") else o.side), 
@@ -220,7 +241,8 @@ class RegimeSimRunner:
         snaps = pd.DataFrame([{
             "run_id": self.run_id, "regime": self.regime.name, "timestamp": s["timestamp"],
             "best_bid": s.get("best_bid"), "best_ask": s.get("best_ask"),
-            "bid_qty_1": s.get("bids", [[0,0]])[0][1], "ask_qty_1": s.get("asks", [[0,0]])[0][1],
+            "bid_qty_1": top_level_quantity(s, "bid_depth"),
+            "ask_qty_1": top_level_quantity(s, "ask_depth"),
         } for s in sim.snapshots])
         return SimRunResult(self.run_id, self.regime.name, orders, trades, snaps, orch.ground_truth_df(self.run_id, self.regime.name))
 
@@ -235,8 +257,17 @@ class DatasetBuilder:
         for regime in self.cfg.regimes:
             for i in range(self.cfg.runs_per_regime):
                 jobs.append((f"{regime.name}_{i:04d}", regime, self.cfg, self.cfg.seed_base + len(jobs) * 1000))
-        
-        results = Parallel(n_jobs=-1, prefer="processes")(delayed(RegimeSimRunner(*j).run)() for j in jobs)
+
+        if self.cfg.n_jobs == 1:
+            results = [RegimeSimRunner(*job).run() for job in jobs]
+        else:
+            try:
+                results = Parallel(n_jobs=self.cfg.n_jobs, prefer="processes")(
+                    delayed(RegimeSimRunner(*job).run)() for job in jobs
+                )
+            except PermissionError:
+                logger.warning("Falling back to serial data generation because process workers are unavailable.")
+                results = [RegimeSimRunner(*job).run() for job in jobs]
         
         orders = pd.concat([r.l3_orders for r in results], ignore_index=True)
         trades = pd.concat([r.l3_trades for r in results], ignore_index=True)

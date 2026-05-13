@@ -1,15 +1,11 @@
-"""
-Window-based feature extraction for L3 and L2 data.
-"""
+"""Window-based feature extraction for L3 and L2 data."""
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
-from joblib import Parallel, delayed
-
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -77,16 +73,14 @@ def get_cnn_sequences(
     data_dir: Path,
     label_idx: pd.DataFrame,
     mode: str = "L3",
-    seq_len: int = 100
+    seq_len: int = 20,
 ) -> Tuple[np.ndarray, np.ndarray]:
     filters = [("run_id", "==", rid)]
     run_label = label_idx[label_idx["run_id"] == rid]
     snaps = pd.read_parquet(data_dir / "l2_snapshots.parquet", filters=filters).sort_values("timestamp")
     
     if mode == "L3":
-        seq_len = 20  # Focus purely on recent hyper-local microstructure
         orders = pd.read_parquet(data_dir / "l3_orders.parquet", filters=filters)
-
         trades = pd.read_parquet(data_dir / "l3_trades.parquet", filters=filters)
         side_map = {"BUY": 1.0, "SELL": -1.0}
         
@@ -116,11 +110,9 @@ def get_cnn_sequences(
         
         l3_df = pd.merge(snaps[["timestamp", "best_bid", "best_ask", "bid_qty_1", "ask_qty_1"]], agg_events, on="timestamp", how="left").fillna(0.0)
         
-        seq_len = 20  # Both models now look at exactly 1 second of uniform history
         # Features: [best_bid, best_ask, bid_qty_1, ask_qty_1, event_count, trade_count, qty_sum, qty_max, modal_freq] (9 channels)
         run_data = l3_df[["timestamp", "best_bid", "best_ask", "bid_qty_1", "ask_qty_1", "event_count", "trade_count", "qty_sum", "qty_max", "modal_freq"]].values.astype(np.float32)
     else:
-        seq_len = 20  # 1 second of snapshots (0.05s * 20 = 1s)
         # L2 features: [best_bid, best_ask, bid_qty_1, ask_qty_1]
         run_data = snaps[["timestamp", "best_bid", "best_ask", "bid_qty_1", "ask_qty_1"]].fillna(0).values.astype(np.float32)
 
@@ -157,7 +149,12 @@ def get_cnn_sequences(
         X.append(seq.T)
         y.append(lrow["label"])
         
-    return np.array(X), np.array(y)
+    if not X:
+        if mode == "L3":
+            return np.empty((0, 9, seq_len), dtype=np.float32), np.empty((0,), dtype=np.int64)
+        return np.empty((0, 4, seq_len), dtype=np.float32), np.empty((0,), dtype=np.int64)
+
+    return np.array(X, dtype=np.float32), np.array(y, dtype=np.int64)
 
 def build_feature_matrices(data_dir: str, window_s: float = 0.3, step_s: float = 0.05) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     data_dir = Path(data_dir)
